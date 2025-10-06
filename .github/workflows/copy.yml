@@ -19,7 +19,10 @@ on:
         description: '目标仓库及标签 (格式 repo:tag)'
         required: true
         default: ''
-
+      platform:
+        description: '指定架构 (如 linux/arm64)'
+        required: true
+        default: 'linux/arm64'
 jobs:
   copy:
     runs-on: ubuntu-latest
@@ -32,3 +35,4 @@ jobs:
         destination: ${{ github.event.inputs.destination }}
         destination-credential: ${{ secrets.DESTINATION_CREDENTIAL }}
         copy: "${{ github.event.inputs.source_repo }} ${{ github.event.inputs.destination_repo }}"
+        platform: ${{ github.event.inputs.platform }}
