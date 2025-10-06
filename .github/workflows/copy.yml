@@ -1,5 +1,6 @@
 name: Copy Docker Image
 run-name: Copy ${{ inputs.source_repo }} to ${{ inputs.destination_repo }}
+
 on: 
   workflow_dispatch:
     inputs:
@@ -12,27 +13,66 @@ on:
         required: true
         default: 'registry.cn-beijing.aliyuncs.com'
       source_repo:
-        description: '仓库及标签 (格式 repo:tag)'
+        description: '源仓库及标签 (格式: nginx:latest)'
         required: true
         default: ''
       destination_repo:
-        description: '目标仓库及标签 (格式 repo:tag)'
+        description: '目标仓库及标签 (格式: your-namespace/nginx:latest)'
         required: true
         default: ''
       platform:
-        description: '指定架构 (如 linux/arm64)'
+        description: '指定架构'
         required: true
+        type: choice
+        options:
+          - linux/amd64
+          - linux/arm64
+          - linux/arm/v7
+          - linux/arm64,linux/amd64
         default: 'linux/arm64'
+
 jobs:
   copy:
     runs-on: ubuntu-latest
     steps:
-    - name: Copy Docker Images
-      uses: ikrong/docker-sync-action@main
-      with:
-        source: ${{ github.event.inputs.source }}
-        source-credential: ${{ secrets.SOURCE_CREDENTIAL }}
-        destination: ${{ github.event.inputs.destination }}
-        destination-credential: ${{ secrets.DESTINATION_CREDENTIAL }}
-        copy: "${{ github.event.inputs.source_repo }} ${{ github.event.inputs.destination_repo }}"
-        platform: ${{ github.event.inputs.platform }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Destination Registry
+        run: |
+          echo "${{ secrets.DESTINATION_CREDENTIAL }}" | docker login ${{ github.event.inputs.destination }} --username ${{ secrets.DESTINATION_USERNAME }} --password-stdin
+      
+      - name: Pull Image with Specific Platform
+        run: |
+          SOURCE_IMAGE="${{ github.event.inputs.source }}/${{ github.event.inputs.source_repo }}"
+          # 如果是 docker.io，格式需要调整
+          if [ "${{ github.event.inputs.source }}" = "docker.io" ]; then
+            SOURCE_IMAGE="docker.io/${{ github.event.inputs.source_repo }}"
+          fi
+          
+          echo "Pulling image: $SOURCE_IMAGE"
+          echo "Platform: ${{ github.event.inputs.platform }}"
+          
+          docker pull --platform ${{ github.event.inputs.platform }} $SOURCE_IMAGE
+      
+      - name: Tag and Push Image
+        run: |
+          SOURCE_IMAGE="${{ github.event.inputs.source }}/${{ github.event.inputs.source_repo }}"
+          if [ "${{ github.event.inputs.source }}" = "docker.io" ]; then
+            SOURCE_IMAGE="docker.io/${{ github.event.inputs.source_repo }}"
+          fi
+          
+          DEST_IMAGE="${{ github.event.inputs.destination }}/${{ github.event.inputs.destination_repo }}"
+          
+          echo "Tagging: $SOURCE_IMAGE -> $DEST_IMAGE"
+          docker tag $SOURCE_IMAGE $DEST_IMAGE
+          
+          echo "Pushing: $DEST_IMAGE"
+          docker push $DEST_IMAGE
+      
+      - name: Summary
+        run: |
+          echo "✅ Successfully copied Docker image"
+          echo "Source: ${{ github.event.inputs.source }}/${{ github.event.inputs.source_repo }}"
+          echo "Destination: ${{ github.event.inputs.destination }}/${{ github.event.inputs.destination_repo }}"
+          echo "Platform: ${{ github.event.inputs.platform }}"
